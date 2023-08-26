@@ -1,0 +1,102 @@
+---
+title: "find_CJIE_with_T6SS"
+author: "Hongxi"
+date: "`r Sys.Date()`"
+output: html_document
+---
+#data preparation 
+load required packages
+```{r message=FALSE, warning=FALSE}
+library(tidyr)
+library(readxl)
+library(gggenes)
+library(ggplot2)
+library(ggfittext)
+library(dplyr)
+library(IRanges)
+```
+
+##load and wash individual CJIE blast data
+
+```{r}
+rm(list = ls())
+
+ranges_CJIE <- read.csv("../../Results/CJIE_determining/whole_range_of_CJIE.csv")
+ranges_T6SS <- read.csv("../../Results/T6SS_identification/whole_range_of_T6SS.csv")
+
+merged_ranges <- rbind(ranges_CJIE,ranges_T6SS)
+
+all_ranges_list <- split(merged_ranges,merged_ranges$accession)
+
+```
+
+# find out the CJIE regions that covers T6SS
+
+```{r}
+find_the_covers <- function(df) {
+  accession <- unique(df$accession)
+  
+  CJIE <- subset(df, type == "CJIE")
+  T6SS <- subset(df, type == "T6SS")
+  
+  CJIE_range <- IRanges(start = CJIE$start, end = CJIE$end)
+  T6SS_range <- IRanges(start = T6SS$start, end = T6SS$end)
+  
+  cover_status <- CJIE_range %over% T6SS_range
+  
+  if (all(cover_status == F)) {
+    return(NULL)
+  } else {
+      ture_CJIE <- CJIE_range[cover_status, ]
+      ture_CJIE <- data.frame(ture_CJIE)
+      ture_CJIE$accession <- accession 
+      ture_CJIE$group <- 1:nrow(ture_CJIE)
+      ture_CJIE$type <- "CJIE"
+      
+      return(ture_CJIE)
+  }
+  
+   
+}
+
+ture_CJIE_ranges <- lapply(all_ranges_list, find_the_covers)
+ture_CJIE_ranges <- ture_CJIE_ranges[!sapply(ture_CJIE_ranges, is.null)]
+
+```
+
+## generate the figures (optional)
+
+```{r}
+draw_ture_CJIE <- function(df) {
+  T6SS_plot <- ggplot(df, aes(xmin = start, xmax = end,y = accession,label = group)) +
+    geom_gene_arrow() +
+    geom_gene_label(align = "left") +
+    facet_grid(cols = vars(group), scales = "free", space = "fixed") +
+    scale_fill_brewer(palette = "Set3",name = "group") +
+    theme_genes()
+  return(T6SS_plot)
+}
+range_ture_CJIE_plots <- lapply(ture_CJIE_ranges,draw_ture_CJIE)
+```
+
+## pick one plot to view (optional)
+
+```{r}
+print(range_ture_CJIE_plots[[3]])
+```
+
+
+# combind the range data 
+
+```{r}
+estimated_CJIE_region <- do.call(rbind,ture_CJIE_ranges)
+rownames(estimated_CJIE_region) <- NULL
+```
+
+# save the CJIE range data into result folder
+
+```{r}
+write.table(estimated_CJIE_region, file = "../../Results/CJIE_determining/estimated_CJIE_region.csv", sep = ",", row.names = F)
+
+```
+

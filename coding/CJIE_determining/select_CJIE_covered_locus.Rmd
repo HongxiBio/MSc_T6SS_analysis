@@ -1,0 +1,223 @@
+---
+title: "select_CJIE_covered_locus.Rmd"
+author: "Hongxi"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+this code is used to select determined CJIE regions from respective genomes files. 
+input files are 
+1. Determined CJIE ranges, with the information of:
+    1) accession 
+    2) start point in genome
+    3) end point in genome
+    3) group NO. for each CJIE in their genome (e.g. group = 2 means this regions is the second potenital CJIE3 region in this accession)
+2. locus information collected from each .gbk file
+
+# determine the location should be selected on each locus for CJIE-3 region
+##load packages
+```{r message=FALSE, warning=FALSE}
+library(Biostrings)
+library(dplyr)
+```
+##load the data 
+```{r}
+rm(list = ls())
+
+CJIE_ranges <- read.csv("../../Results/CJIE_determining/potential_CJIE_ranges.csv")
+locus_info <- read.csv("../../data/processed_data/CJ_RefSeq/all_locus_info.csv")
+
+CJIE_list <- CJIE_ranges["accession"]
+
+locus_info_CJIE <- merge(locus_info,CJIE_list,by = "accession", all.y =T)
+
+locus_info_CJIE$type <- "locus"
+```
+
+## wash the data for next step
+```{r}
+CJIE_ranges <- CJIE_ranges[c("accession","group","width","start","end","type")]
+colnames(CJIE_ranges) <- c("accession","locus_accession","length","start","end","type")
+
+locus_and_CJIE <- rbind(locus_info_CJIE,CJIE_ranges) 
+
+locus_and_CJIE_list <- split(locus_and_CJIE,locus_and_CJIE$accession)
+
+```
+
+##write a function to determine what position should be select in each locus
+
+```{r}
+find_locus_location <- function(data) {
+  
+  locus <- subset(data, type == "locus")
+  CJIE <- subset(data, type == "CJIE")
+  
+  mutiple_CJIE <- split(CJIE,CJIE$locus_accession)
+  
+  find_location <- function(df,locus) {
+      group_num <- df$locus_accession
+      target_start <- df$start
+      target_end <- df$end
+      
+      
+      locus$target_start_in_locus <- ifelse(locus$start >= target_start, 1, target_start-locus$start)
+      locus$target_end_in_locus <- ifelse(locus$end >= target_end, target_end-locus$start, locus$length)
+      locus <- subset(locus,target_start_in_locus <= length & target_end_in_locus > 0)
+      
+      locus$group <- group_num
+      return(locus)
+  }
+    location_on_locus <- lapply(mutiple_CJIE, find_location, locus = locus)
+    location_on_locus <- location_on_locus[!sapply(location_on_locus, is.null)]
+    
+    return(location_on_locus)
+}
+
+location_on_locus <- lapply(locus_and_CJIE_list, find_locus_location)
+
+location_on_locus_final <- unlist(location_on_locus, recursive = F)
+location_on_locus_final <- do.call(rbind, location_on_locus_final)
+
+#wash the data
+location_on_locus_final <- distinct(location_on_locus_final)
+rownames(location_on_locus_final) <- NULL
+```
+now the position for each locus that needed to be cut are stored in "location_on_locus_final" 
+
+#cat the target sequence from downloaded files
+##load the packages
+```{r message=FALSE}
+library(Biostrings)
+```
+
+##load and wash the files
+```{r}
+folder_path <- "../../data/processed_data/CJ_RefSeq/ncbi_dataset/data/"
+
+genome_and_locus_info <- location_on_locus_final
+genome_and_locus_info$target_start_in_locus <- as.integer(genome_and_locus_info$target_start_in_locus)
+
+```
+
+##get the target sequences
+```{r}
+
+
+get_the_file_path <- function(accession,data_folder_path) {
+  genome_folder_path <- paste0(data_folder_path,accession)
+  genome_path <- list.files(path = genome_folder_path, pattern = "^GCF_.*\\.fna$", full.names = T)
+  return(genome_path)
+}
+
+genome_and_locus_info$genome_file_path <- get_the_file_path(accession = genome_and_locus_info$accession, data_folder_path = folder_path)
+
+genome_and_locus_info$accession_group <- paste0(genome_and_locus_info$accession,"_",genome_and_locus_info$group)
+
+genome_and_locus_list <- split(genome_and_locus_info, genome_and_locus_info$accession_group)
+
+
+load_and_select_genome <- function(df) {
+  accession <- unique(df$accession_group)
+  genome_path <- unique(df$genome_file_path)
+  
+  genome_seq <- readDNAStringSet(genome_path)
+  
+  #rename the locus to fit locus name in dataframe
+  seq_names <- names(genome_seq)
+  new_seq_names <- sapply(seq_names, function(x) unlist(strsplit(x, "\\."))[1])
+  names(genome_seq) <- new_seq_names
+  
+  df <- df[order(df$start),]
+  df$sequence <- subseq(genome_seq[df$locus_accession], start = df$target_start_in_locus, end = df$target_end_in_locus)
+  
+  sequence_final <- paste0(df$sequence,collapse = "")
+  
+  start_in_genome <- min(df$target_start_in_locus + df$start)
+  end_in_genome <- max(df$target_end_in_locus + df$start)
+  
+  data <- data.frame(accession = accession, 
+                     CJIE_seq = sequence_final,
+                     start = start_in_genome,
+                     end = end_in_genome)
+  
+  return(data)
+  
+}
+
+CJIE_regions_final <- lapply(genome_and_locus_list,load_and_select_genome)
+CJIE_regions_final <- CJIE_regions_final[!sapply(CJIE_regions_final, is.null)]
+CJIE_regions_final_table <- do.call(rbind, CJIE_regions_final)
+
+rownames(CJIE_regions_final_table) <- NULL
+```
+the sequence for each CJIE regions are storied in the list `CJIE_regions_final`
+
+##analysis each CJIE-3 regions
+```{r}
+#get the GC content
+CJIE_regions_final_table$GC_content <- sapply(CJIE_regions_final_table$CJIE_seq, function(x) {
+    sum(letterFrequency(DNAString(x), c("G", "C"))) / length(DNAString(x))
+})
+
+#size for each CJIE-3 region
+CJIE_regions_final_table$size <- CJIE_regions_final_table$end -CJIE_regions_final_table$start
+
+#wash the table 
+CJIE_regions_final_table <- CJIE_regions_final_table[c("accession","start","end","size","GC_content")]
+```
+
+##output the CJIE-3 regions
+```{r}
+write.csv(CJIE_regions_final_table, file = "../../Results/CJIE_determining/potential_CJIE_ranges_with_sequence.csv", row.names = F)
+
+outputdir <- "../../data/processed_data/CJIE-3_regions/"
+
+outputCJIE <- function(df,direction) {
+  accession <- df$accession
+  
+  textout <- paste0(">",accession,"\n",df$CJIE_seq)
+  
+  outpath <- paste0(direction,accession)
+  dir.create(outpath,showWarnings = FALSE)
+  
+  outname <- paste0(outpath,"/CJIE-3.fna")
+  writeLines(textout, outname)
+  
+}
+
+lapply(CJIE_regions_final, outputCJIE, direction = outputdir)
+```
+then apply the prokka to annotate the CJIE-3 region
+
+##test code, not available
+```{r eval=FALSE, include=FALSE}
+
+testdata <- genome_and_locus_list[["GCF_012220765.1_1"]]
+
+accession <- unique(testdata$accession)
+  genome_path <- unique(testdata$genome_file_path)
+  
+  genome_seq <- readDNAStringSet(genome_path)
+  
+  #rename the locus to fit locus name in dataframe
+  seq_names <- names(genome_seq)
+  new_seq_names <- sapply(seq_names, function(x) unlist(strsplit(x, "\\."))[1])
+  names(genome_seq) <- new_seq_names
+  
+  testdata <- testdata[order(testdata$start),]
+  testdata$sequence <- subseq(genome_seq[testdata$locus_accession], start = testdata$target_start_in_locus, end = testdata$target_end_in_locus)
+
+  sequence_final <- paste0(testdata$sequence, collapse = "")
+
+  testdata2 <- data.frame(accession = accession, 
+                     CJIE_seq = sequence_final)
+  
+  
+  genome_seq
+test_Sequence <- xscat(test_genome$sequence)
+
+substr(sequence_final, nchar(sequence_final) - 99, nchar(sequence_final))
+
+
+```

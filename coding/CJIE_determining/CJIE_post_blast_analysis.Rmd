@@ -1,0 +1,147 @@
+---
+title: "CJIE_post_blast_analysis"
+author: "Hongxi"
+date: "`r Sys.Date()`"
+output: html_document
+---
+#data preparation 
+load required packages
+```{r message=FALSE, warning=FALSE}
+library(tidyr)
+library(readxl)
+library(gggenes)
+library(ggplot2)
+library(ggfittext)
+library(dplyr)
+library(IRanges)
+```
+
+##load and wash individual CJIE blast data
+
+```{r}
+CJIE_blast_raw <- read.csv("../../Results/CJIE_determining/CJIE_blast_result.csv", sep = " ")
+metadata <- read.csv("../../data/metadata/datasets_used_in_analysis.csv", sep = " ")
+locus_info <- read.csv("../../data/processed_data/CJ_RefSeq/all_locus_info.csv")
+T6SS_positive_list <- data.frame(accession = readLines("../../Results/T6SS_identification/T6SS_positive_list.txt"))
+
+CJIE_blast_raw$Subject_accession_version <- sub("\\..*", "", CJIE_blast_raw$Subject_accession_version)
+CJIE_blast_raw <- merge(CJIE_blast_raw, locus_info, by.x = "Subject_accession_version", by.y = "locus_accession", all.x = T)
+
+CJIE_with_T6SS_positive <- merge(CJIE_blast_raw,T6SS_positive_list, by = "accession")
+```
+
+
+```{r}
+
+CJIE_with_T6SS_positive$start_in_genome <- CJIE_with_T6SS_positive$Start_of_alignment_in_subject + CJIE_with_T6SS_positive$start
+CJIE_with_T6SS_positive$end_in_genome <- CJIE_with_T6SS_positive$End_of_alignment_in_subject + CJIE_with_T6SS_positive$start
+
+CJIE_with_T6SS <- subset(CJIE_with_T6SS_positive,
+                         subset = Percentage_of_identical_matches >=50,
+                         select = c("accession", "Subject_accession_version","start_in_genome","end_in_genome"))
+
+CJIE_with_T6SS$orientation <- ifelse(CJIE_with_T6SS$end_in_genome < CJIE_with_T6SS$start_in_genome, "reverse", "forward")
+CJIE_with_T6SS$type <- "CJIE"
+
+colnames(CJIE_with_T6SS) <- c("accession","subject_code","start","end","orientation","type")
+
+#build a function to make sure start point < end point
+swap_start_end <- function(data) {
+  # get the rows that need to be swiped 
+  rows_to_swap <- data$orientation == "reverse"
+  
+  # swap the start and end value 
+  data[rows_to_swap, c("start", "end")] <- data[rows_to_swap, c("end", "start")]
+  
+  # return the swiped data
+  return(data)
+}
+
+# apply the function
+CJIE_with_T6SS <- swap_start_end(CJIE_with_T6SS)
+
+
+CJIE_with_T6SS_list <- split(CJIE_with_T6SS,CJIE_with_T6SS_positive$accession)
+```
+the blast result with location in subject genomes are storied in "CJIE_with_T6SS_list" list
+
+
+```{r echo=FALSE}
+find_the_ranges <- function(data) {
+  all_ranges <- IRanges(start = data$start, end = data$end, names = data$accession)
+  ranges <- data.frame(reduce(all_ranges))
+  ranges$accession <- unique(data$accession)
+  
+  threshold <- 70000
+  group_the_ranges <- function(df,threshold) {
+    accession <- unique(df$accession)
+    df <- arrange(df,start)
+    df$type <- "CJIE"
+    df$group <- cumsum(c(1, (df$start[-1] - df$end[-nrow(df)]) > threshold))
+    return(df)
+  }
+  range_CJIE_list <- group_the_ranges(ranges, threshold)
+  
+  return(range_CJIE_list)
+}
+
+range_CJIE_grouped <- lapply(CJIE_with_T6SS_list,find_the_ranges)
+range_CJIE_grouped <- range_CJIE_grouped[!sapply(range_CJIE_grouped, is.null)]
+
+```
+  This function `find_the_ranges` takes a data frame with start, end, and accession columns as input.
+  It calculates the ranges and groups them based on a threshold value: 70000 bases.
+  the groups numbers more than 2 is rule out from the result
+  The function returns a data frame with the grouped ranges.
+then apply the function for all elements in list `CJIE_with_T6SS_list`
+
+
+## have a view of the possible CJIE3 location (optional)
+```{r}
+draw_CJIE <- function(df) {
+  plot <- ggplot(df, aes(xmin = start, xmax = end,y = accession,label = group)) +
+    geom_gene_arrow() +
+    geom_gene_label(align = "left") +
+    facet_grid(cols = vars(group), scales = "free", space = "fixed") +
+    scale_fill_brewer(palette = "Set3",name = "sequence_code") +
+    theme_genes()
+  return(plot)
+}
+
+# apply the function
+range_CJIE_plots <- lapply(range_CJIE_grouped,draw_CJIE)
+
+```
+
+### view one of the CJIE range
+
+```{r}
+print(range_CJIE_plots[[77]])
+```
+
+```{r}
+find_all_ranges <- function(data) {
+  
+  accession_gene_list <- split(data,data$group)
+  
+  find_the_ranges <- function(df) {
+    seq_ranges <- data.frame(accession = unique(df$accession), start = min(df$start), end = max(df$end), type = unique(df$type) , group = unique(df$group))
+    return(seq_ranges)
+  }
+  
+  accession_range_list <- lapply(accession_gene_list, find_the_ranges)
+  accession_range_list <- do.call(rbind,accession_range_list)
+  
+  return(accession_range_list)
+}
+
+whole_CJIE_location <- lapply(range_CJIE_grouped,find_all_ranges)
+whole_CJIE_location <- do.call(rbind,whole_CJIE_location)
+rownames(whole_CJIE_location) <- NULL
+```
+
+```{r}
+write.table(whole_CJIE_location, file = "../../Results/CJIE_determining/whole_range_of_CJIE.csv", sep = ",", row.names = F)
+
+```
+

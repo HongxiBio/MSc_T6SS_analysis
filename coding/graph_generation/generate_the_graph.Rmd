@@ -1,0 +1,200 @@
+---
+title: "generate_the_graph.Rmd"
+author: "Hongxi"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+this file is used to generate the genetic structure of CJIE-3 region from the annotated files
+
+##load the library
+```{r warning=FALSE}
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(gggenes)
+library(ggrepel)
+```
+
+##load the data
+```{r}
+rm(list = ls())
+
+type_group <- read.csv("./protein_function_and_type.csv") 
+CJIE_region_info <- read.csv("../../Results/CJIE_determining/potential_CJIE_ranges.csv")
+CJIE_region_info$accession <- paste0(CJIE_region_info$accession,"_",CJIE_region_info$group)
+
+
+```
+
+##list the file path
+```{r}
+data_folder <- "../../data/processed_data/CJIE-3_regions"
+folders_link <- list.files(data_folder, pattern = "\\.gff$", recursive = T, full.names = T)
+folders_link <- as.list(folders_link)
+
+# name each link in the list
+folder_names <- character(length(folders_link))
+for (i in seq_along(folders_link)) {
+    folder_names[[i]] <- basename(dirname(dirname(folders_link[[i]])))
+}
+names(folders_link) <- folder_names
+```
+
+
+#make a function to extract cds information from annotated .gff files
+```{r}
+
+extract_cds <- function(file_link, CJIE_info) {
+  #wash gff file
+  data <- readLines(file_link)
+  
+  comment_lines <- grep("^##",data)
+  tables <- data[(comment_lines[2]+1):(comment_lines[3]-1)]
+  
+  df <- str_split_fixed(tables, "\t",9)
+  df <- data.frame(df)
+  colnames(df) <- c("accession","name","tag","start_in_locus","end_in_locus","V6","orientation", "V8", "protein_function")
+  df <- df[c("accession","tag","start_in_locus","end_in_locus","orientation","protein_function")]
+  df$start_in_locus <- as.numeric(df$start_in_locus)
+  df$end_in_locus <- as.numeric(df$end_in_locus)
+  df$protein_function <- gsub(".*product=", "", df$protein_function)
+  
+  df <- left_join(df,type_group,by = "protein_function")
+  df$type <- ifelse(is.na(df$type),"other",df$type)
+  df$color <- ifelse(is.na(df$color), 'yellow', df$color)
+  
+  #take CJIE information
+  accession_NUM <- unique(df$accession)
+  
+  CJIE <- subset(CJIE_info,subset = accession == accession_NUM, select = c("accession","start","end"))
+  start_in_genome <- CJIE$start
+  end_in_genome <- CJIE$end
+  
+  #add the CJIE location information to df
+  df$start <- df$start_in_locus + start_in_genome
+  df$end <- df$end_in_locus + start_in_genome
+  
+  return(df)
+} 
+
+cds_info <- lapply(folders_link, extract_cds, CJIE_info = CJIE_region_info)
+```
+now all the CDS information are stored in cds_info
+
+
+##generate the graphs
+```{r}
+draw_CJIE <- function(df) {
+  feature <- subset(df,
+                       subset = protein_function != "hypothetical protein" & type != "T6SS_core",
+                       select = c("accession","orientation","protein_function","type","start","end"))
+  
+  CJIE_plot <- ggplot(df,
+                      aes(xmin = start, 
+                          xmax = end, 
+                          y = orientation, 
+                          fill = type, 
+                          label = type, 
+                          forward = orientation == "+")) +
+    geom_gene_arrow() +
+    geom_text_repel(data = feature,
+                    aes(x = (start+end)/2, 
+                        y = orientation, 
+                        label = protein_function),
+                    direction = "y",
+                    force_pull = 0.2,
+                    nudge_y = 0.3,
+                    max.overlaps = 20,
+                    segment.linetype = "dashed",
+                    segment.size = 0.1,
+                    size = 3) +
+    facet_grid(scales = "free", space = "fixed") +
+    scale_fill_manual(values = setNames(df$color,df$type)) +
+    theme_genes()+
+    xlab("")+
+    ylab(unique(df$accession))
+  return(CJIE_plot)
+}
+
+all_CJIE_plots <- lapply(cds_info,draw_CJIE)
+```
+
+
+###have a look of one of the plot(optional)
+```{r}
+print(all_CJIE_plots[[1]])
+```
+
+##output the plots into respective folder
+```{r}
+out_folder <- "../../Results/CJIE_determining/CJIE3_plots/"
+
+for (i in seq_along(all_CJIE_plots)) {
+  out_path <- paste0(out_folder,names(all_CJIE_plots[i]))
+  ggsave(out_path,
+         plot = all_CJIE_plots[[i]],
+         width = 20,
+         height = 5,
+         device = "png")
+}
+```
+
+###test code
+```{r eval=FALSE, include=FALSE}
+
+data <- readLines("/home/vader/Documents/MSc-project/data/processed_data/CJIE-3_regions/GCF_001717625.1_1/annotation/PROKKA_08182023.gff")
+
+comment_lines <- grep("^##", data)
+
+result <- data[(comment_lines[2]+1):(comment_lines[3]-1)]
+
+df <- str_split_fixed(result, "\t",9)
+df <- data.frame(df)
+colnames(df) <- c("accession","name","tag","start_in_locus","end_in_locus","V6","orientation", "V8", "protein_function")
+
+df$protein_function <- gsub(".*product=", "", df$protein_function)
+
+df <- df[c("accession","tag","start_in_locus","end_in_locus","orientation","protein_function")]
+df$start_in_locus <- as.numeric(df$start_in_locus)
+df$end_in_locus <- as.numeric(df$end_in_locus)
+
+testdata <- left_join(df,type_group,by = "protein_function")
+
+testdata$type <- ifelse(is.na(testdata$type),"other",testdata$type)
+testdata$color <- ifelse(is.na(testdata$color), 'yellow', testdata$color)
+
+
+accession_NUM <- unique(testdata$accession)
+
+CJIE <- subset(CJIE_region_info,subset = accession == accession_NUM, select = c("accession","start","end"))
+start_in_genome <- CJIE$start
+end_in_genome <- CJIE$end
+
+testdata$start <- testdata$start_in_locus + start_in_genome
+testdata$end <- testdata$end_in_locus + start_in_genome
+
+test_feature <- subset(testdata,
+                       protein_function != "hypothetical protein" & type != "T6SS_core",
+                       select = c("accession","orientation","protein_function","type","start","end"))
+
+
+
+CJIE_plot <- ggplot(testdata,aes(xmin = start, xmax = end, y = orientation, fill = type, label = type, forward = orientation == "+")) +
+  geom_gene_arrow() +
+  geom_text_repel(data = test_feature,aes(x = (start+end)/2, y = orientation, label = protein_function),
+                  direction = "y",
+                  force_pull = 0.2,
+                  nudge_y = 0.3,
+                  max.overlaps = 20,
+                  segment.linetype = "dashed",
+                  segment.size = 0.1,
+                  size = 3) +
+  facet_grid(scales = "free", space = "fixed") +
+  scale_fill_manual(values = setNames(testdata$color,testdata$type)) +
+  theme_genes()+
+  xlab("")+
+  ylab(unique(testdata$accession))
+CJIE_plot
+```
+

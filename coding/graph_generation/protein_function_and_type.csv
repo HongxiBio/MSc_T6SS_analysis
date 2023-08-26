@@ -1,0 +1,30 @@
+protein_function,type,color
+TraG,conjugative_system,pink
+hypothetical protein,hypothetical_protein,orange
+tyrosine-type recombinase/integrase,integrase,cyan
+Tyrosine recombinase XerH (integrase),integrase,cyan
+PAAR-like,PAAR-like,purple
+DUF4299,putative_chaperone,black
+Lipase (class 3) domain-containing protein,putative_effector,red
+lysozyme,putative_effector,red
+Tox-REase-7,putative_effector,red
+TNT,putative_effector,red
+AHH-nuclease,putative_effector,red
+Ankyrin domain containing protein,putative_immunity,brown
+tRNA-Arg(gcg),putative_regulator,blue
+WGR domain-like containing protein,putative_regulator,blue
+TagH,T6SS_core,green
+TssM,T6SS_core,green
+Hcp,T6SS_core,green
+TssL,T6SS_core,green
+TssK,T6SS_core,green
+TssJ,T6SS_core,green
+TssA,T6SS_core,green
+TssB,T6SS_core,green
+TssC,T6SS_core,green
+TssE,T6SS_core,green
+TssF,T6SS_core,green
+TssG,T6SS_core,green
+VgrG,T6SS_VgrG,darkgreen
+DinJ,Type_II_TA_complex,grey
+YafQ,Type_II_TA_complex,grey

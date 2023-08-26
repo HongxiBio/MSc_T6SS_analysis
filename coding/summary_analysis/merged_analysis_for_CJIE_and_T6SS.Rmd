@@ -1,0 +1,80 @@
+---
+title: "merged_analysis_for_CJIE_and_T6SS"
+author: "Hongxi"
+date: "`r Sys.Date()`"
+output: html_document
+---
+this document is used to summarize the blast result for T6SS+ and CJIE+ in both all genomes and genome subset with "complete genomes"
+#preparation
+
+```{r}
+library(tidyr)
+```
+
+##load the data 
+```{r}
+rm(list = ls())
+
+metadata <- read.csv("../../data/metadata/datasets_used_in_analysis.csv", sep = " ")
+T6SS_positive_list <- data.frame(accession = readLines("../../Results/T6SS_identification/T6SS_positive_list.txt"), T6SS = "T6SS+")
+CJIE_plasmid_list <- read.csv("../../Results/CJIE_determining/CJIE_and_plasmid_positive_simple.csv")
+metadata_simple <- subset(metadata, select = c("Assembly_Accession","Assembly_Level"))
+
+```
+
+#clean the data into proparate forms
+```{r}
+CJIE_plasmid_list$type <- replace(CJIE_plasmid_list$type, CJIE_plasmid_list$type == "CJIE", "CJIE+")
+CJIE_plasmid_list$type <- replace(CJIE_plasmid_list$type, CJIE_plasmid_list$type == "plasmid", "plasmid+")
+CJIE_plasmid_list <- subset(CJIE_plasmid_list, select = c("accession","type"))
+
+merged_positives <- merge(CJIE_plasmid_list,T6SS_positive_list, by = "accession", all = T)
+
+metadata_simple <- merge(metadata_simple,merged_positives, by.x ="Assembly_Accession", by.y = "accession", all.x = T )
+metadata_simple$type <- replace(metadata_simple$type, is.na(metadata_simple$type),"CJIE- plasmid-")
+metadata_simple$T6SS <- replace(metadata_simple$T6SS, is.na(metadata_simple$T6SS),"T6SS-")
+
+metadata_complete_genome <- subset(metadata_simple,subset = Assembly_Level == "Complete Genome")
+```
+the information of T6SS and CJIE3/plasmid for every genomes used in this analysis are stored in `metadata_simple`.
+the genome with "complete genome" are selected from metadata_simple for additional information about compelete genomes 
+
+#show the tables
+```{r}
+summary_for_all_genome <- addmargins(table(metadata_simple$type,metadata_simple$T6SS))
+summary_for_complete_genome <- addmargins(table(metadata_complete_genome$type,metadata_complete_genome$T6SS))
+
+print(summary_for_all_genome)
+print(summary_for_complete_genome)
+
+```
+#get different classified groups
+```{r}
+list_complete_genome <- subset(metadata_simple, Assembly_Level == "Complete Genome", select = "Assembly_Accession")
+list_CJIE_positive <- subset(metadata_simple, Assembly_Level == "Complete Genome" & type == "CJIE+", select = "Assembly_Accession")
+list_T6SS_positive <- subset(metadata_simple, Assembly_Level == "Complete Genome" & T6SS == "T6SS+", select = "Assembly_Accession")
+
+```
+
+#output the tables into result folder
+```{r}
+
+write.csv(summary_for_complete_genome, file = "../../Results/summary/T6SS_CJIE_in_complete_genome.csv", quote = F,row.names = T)
+write.csv(summary_for_all_genome, file = "../../Results/summary/T6SS_CJIE_in_all_genome.csv", quote = F, row.names = T)
+
+write.csv(list_complete_genome, file = "../../Results/summary/complete_genomes_list.csv", row.names = F)
+write.csv(list_CJIE_positive, file = "../../Results/summary/complete_genomes_CJIE_positive_list.csv", row.names = F)
+write.csv(list_T6SS_positive, file = "../../Results/summary/complete_genomes_T6SS_positive.csv", row.names = F)
+```
+
+#based on the requirement of this project, the tags "plasmid+" and "CJIE- plasmid-" will be changed as "CJIE-"
+```{R}
+metadata_complete_genome_no_plasmid$type <- ifelse(metadata_complete_genome_no_plasmid$type != "CJIE- plasmid-", metadata_complete_genome_no_plasmid$type, "CJIE-")
+metadata_complete_genome_no_plasmid$type <- ifelse(metadata_complete_genome_no_plasmid$type != "plasmid+", metadata_complete_genome_no_plasmid$type, "CJIE-")
+
+metadata_complete_genome_no_plasmid <- subset(metadata_complete_genome_no_plasmid, select = c("Assembly_Accession","type","T6SS"))
+
+metadata_for_detailed <- merge(metadata,metadata_complete_genome_no_plasmid, by = "Assembly_Accession")
+write.csv(metadata_for_detailed, file = "../../Results/summary/complete_genomes_all_result.csv", row.names = F)
+
+```

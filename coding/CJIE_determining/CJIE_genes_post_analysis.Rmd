@@ -1,0 +1,91 @@
+---
+title: "CJIE_genes_post_analysis.Rmd"
+author: "Hongxi"
+date: "`r Sys.Date()`"
+output: html_document
+---
+note: this file is used to analysis the blastn result for CJIE 3 genes (CJE1094(intergase)), CJE1105, and CJE1153)
+
+# preparation
+
+```{r}
+library(tidyr)
+library(dplyr)
+```
+
+## load data 
+
+```{r}
+rm(list = ls())
+
+CJIE_gene_blast_raw <- read.csv("../../Results/CJIE_determining/CJIE_key_genes_blast_result.csv", sep = " ")
+metadata <- read.csv("../../data/metadata/datasets_used_in_analysis.csv", sep = " ")
+available_metadata_list <- metadata["Assembly_Accession"]
+locus_info <- read.csv("../../data/processed_data/CJ_RefSeq/all_locus_info.csv")
+
+CJIE_gene_blast_raw$Subject_accession_version <- sub("\\..*", "", CJIE_gene_blast_raw$Subject_accession_version)
+CJIE_gene_blast_raw <- merge(CJIE_gene_blast_raw, locus_info, by.x = "Subject_accession_version", by.y = "locus_accession", all.x = T)
+CJIE_gene_blast_raw <- merge(CJIE_gene_blast_raw,available_metadata_list, by.x = "accession", by.y = "Assembly_Accession")
+
+```
+
+# analysis the blast data
+
+```{r}
+# calculate the hits' coverage proportion in query protein 
+  CJIE_gene_blast_raw$hit_coverage <- CJIE_gene_blast_raw$Alignment_length / CJIE_gene_blast_raw$Query_sequence_length
+
+# select the qualified results from blast results
+  CJIE_gene_blast_available <- subset(CJIE_gene_blast_raw,
+                                      subset = Percentage_of_identical_matches >=50 & hit_coverage >= 0.5,
+                                      select = c("Query_accession_version","accession")) 
+# calculate the frequency of hits for each protein and clean the data
+  CJIE_gene_blast_available <- CJIE_gene_blast_available %>% group_by(Query_accession_version, accession) %>% mutate(frequency = n())
+  CJIE_gene_blast_available <- distinct(CJIE_gene_blast_available)
+
+
+# change the data format from long-data to wide-data
+  CJIE_gene_blast_available_wide <- spread(CJIE_gene_blast_available, key = Query_accession_version, value = frequency, fill = 0)
+  
+# calculate how many genes are present in each genome
+  CJIE_gene_blast_available_wide$target_score <- rowSums(CJIE_gene_blast_available_wide != 0) -1
+
+# select the presence of genes that 2 in 3 as CJIE positive
+# select the only presence of CJIE1094 (intergase) as plasmid positive  
+  CJIE_positive_result <- subset(CJIE_gene_blast_available_wide,
+                                target_score >= 2)
+  CJIE_positive_result$type <- "CJIE"
+  
+  plasmid_positive_result <- subset(CJIE_gene_blast_available_wide,
+                                    subset = target_score == 1 & CJE1094 == 1)
+  plasmid_positive_result$type <- "plasmid"
+  
+# generate a simpler table of the result
+  CJIE_and_plasmid_positive_simple <- subset(rbind(CJIE_positive_result,plasmid_positive_result),
+                                             select = c("accession","target_score","type"))
+# combine the result with metadata 
+  CJIE_with_metadata <- merge(CJIE_and_plasmid_positive_simple, metadata, by.x = "accession", by.y = "Assembly_Accession", all.x = T)
+
+```
+
+## output T6SS positive results into Result folder
+
+```{r}
+    write.table(rbind(CJIE_positive_result,plasmid_positive_result), file = "../../Results/CJIE_determining/CJIE_and_plasmid_positive.csv" )
+    write.table(CJIE_with_metadata, file = "../../Results/CJIE_determining/CJIE_and_plasmid_with_metadata.csv" )
+    write.table(CJIE_and_plasmid_positive_simple, file = "../../Results/CJIE_determining/CJIE_and_plasmid_positive_simple.csv", sep = ",", row.names = F)
+
+```
+
+
+# additional analysis
+
+```{r}
+meta_complete <- subset(metadata, subset = Assembly_Level == "Complete Genome", select = "Assembly_Accession")
+CJIE_and_plasmid_with_complete_genome <- merge(meta_complete,CJIE_and_plasmid_positive_simple, by.x = "Assembly_Accession", by.y = "accession")
+
+T6SS_positive_list <- data.frame(accession = readLines("../../Results/T6SS_identification/T6SS_positive_list.txt"))
+
+test <- merge(T6SS_positive_list,CJIE_and_plasmid_positive_simple,by ="accession")
+```
+

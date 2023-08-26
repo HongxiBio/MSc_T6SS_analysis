@@ -1,0 +1,260 @@
+---
+title: "CJIE_post_blast_analysis_2"
+author: "Hongxi"
+date: "`r Sys.Date()`"
+output: html_document
+---
+# Introduction
+this document are developed to complete 2 things: 
+
+1) based on the blast result for the CJIE 3 region from RM1221, determine the potential CJIE3 regions in all genomes with assembly level "COMPLETE GENOME".   
+2) based on the blast result for three key genes in RM1221 and the regions determined in 1), find out all potential CJIE3 regions that carry any CJIE key genes.
+
+#determine the CJIE3 region from CJIE-3 blast result
+##data preparation 
+load required packages
+```{r message=FALSE, warning=FALSE}
+library(tidyr)
+library(readxl)
+library(gggenes)
+library(ggplot2)
+library(ggfittext)
+library(dplyr)
+library(IRanges)
+```
+
+##load and wash individual CJIE blast data
+
+```{r}
+rm(list = ls())
+
+CJIE_blast_raw <- read.csv("../../Results/CJIE_determining/CJIE_blast_result.csv", sep = " ")
+locus_info <- read.csv("../../data/processed_data/CJ_RefSeq/all_locus_info.csv")
+CJIE_positive_list <- read.csv("../../Results/summary/complete_genomes_CJIE_positive_list.csv")
+
+CJIE_blast_raw$Subject_accession_version <- sub("\\..*", "", CJIE_blast_raw$Subject_accession_version)
+CJIE_blast_raw <- merge(CJIE_blast_raw, locus_info, by.x = "Subject_accession_version", by.y = "locus_accession", all.x = T)
+
+CJIE_positive_in_complete_genome <- merge(CJIE_blast_raw,CJIE_positive_list, by.x = "accession", by.y = "Assembly_Accession")
+```
+
+## wash the data to have correct direction for each hits
+```{r}
+
+CJIE_positive_in_complete_genome$start_in_genome <- CJIE_positive_in_complete_genome$Start_of_alignment_in_subject + CJIE_positive_in_complete_genome$start
+CJIE_positive_in_complete_genome$end_in_genome <- CJIE_positive_in_complete_genome$End_of_alignment_in_subject + CJIE_positive_in_complete_genome$start
+
+CJIE_within_complete_genome <- subset(CJIE_positive_in_complete_genome,
+                         subset = Percentage_of_identical_matches >=50,
+                         select = c("accession", "Subject_accession_version","start_in_genome","end_in_genome"))
+
+CJIE_within_complete_genome$orientation <- ifelse(CJIE_within_complete_genome$end_in_genome < CJIE_within_complete_genome$start_in_genome, "reverse", "forward")
+CJIE_within_complete_genome$type <- "CJIE"
+
+colnames(CJIE_within_complete_genome) <- c("accession","subject_code","start","end","orientation","type")
+
+#build a function to make sure start point < end point
+swap_start_end <- function(data) {
+  # get the rows that need to be swiped 
+  rows_to_swap <- data$orientation == "reverse"
+  
+  # swap the start and end value 
+  data[rows_to_swap, c("start", "end")] <- data[rows_to_swap, c("end", "start")]
+  
+  # return the swiped data
+  return(data)
+}
+
+# apply the function
+CJIE_within_complete_genome <- swap_start_end(CJIE_within_complete_genome)
+
+
+CJIE_with_complete_genome_list <- split(CJIE_within_complete_genome,CJIE_positive_in_complete_genome$accession)
+```
+the blast result with location in subject genomes are storied in "CJIE_with_complete_genome_list" list
+NOTE: only 47 genomes are selected from the blast result, which is less than the number (48) of CJIE+ genomes determined by three key genes' blast: indicate that the one contains little coverage of CJIE3 region
+
+## group each hit in genomes into different groups by the criteria of: the gaps of any corrensponding hits larger than 70kb will be considered as different groups   
+```{r echo=FALSE}
+find_the_ranges <- function(data) {
+  all_ranges <- IRanges(start = data$start, end = data$end, names = data$accession)
+  ranges <- data.frame(reduce(all_ranges))
+  ranges$accession <- unique(data$accession)
+  
+  threshold <- 70000
+  group_the_ranges <- function(df,threshold) {
+    accession <- unique(df$accession)
+    df <- arrange(df,start)
+    df$type <- "CJIE"
+    df$group <- cumsum(c(1, (df$start[-1] - df$end[-nrow(df)]) > threshold))
+    return(df)
+  }
+  range_CJIE_list <- group_the_ranges(ranges, threshold)
+  
+  return(range_CJIE_list)
+}
+
+range_CJIE_grouped <- lapply(CJIE_with_complete_genome_list,find_the_ranges)
+range_CJIE_grouped <- range_CJIE_grouped[!sapply(range_CJIE_grouped, is.null)]
+
+```
+  This function `find_the_ranges` takes a data frame with start, end, and accession columns as input.
+  It calculates the ranges and groups them based on a threshold value: 70000 bases.
+  the groups numbers more than 2 is rule out from the result
+  The function returns a data frame with the grouped ranges.
+then apply the function for all elements in list `CJIE_with_complete_genome_list`
+
+
+### take a view of the possible CJIE3 location (optional)
+```{r}
+draw_CJIE <- function(df) {
+  plot <- ggplot(df, aes(xmin = start, xmax = end,y = accession,label = group)) +
+    geom_gene_arrow() +
+    geom_gene_label(align = "left") +
+    facet_grid(cols = vars(group), scales = "free", space = "fixed") +
+    scale_fill_brewer(palette = "Set3",name = "sequence_code") +
+    theme_genes()
+  return(plot)
+}
+
+# apply the function
+range_CJIE_plots <- lapply(range_CJIE_grouped,draw_CJIE)
+
+```
+
+### view one of the CJIE range
+
+```{r}
+print(range_CJIE_plots["GCF_029025025.1"])
+```
+##combine all the JICE ranges into a large range and store into one dataframe
+```{r}
+find_all_ranges <- function(data) {
+  
+  accession_gene_list <- split(data,data$group)
+  
+  find_the_ranges <- function(df) {
+    seq_ranges <- data.frame(accession = unique(df$accession), start = min(df$start), end = max(df$end), type = unique(df$type) , group = unique(df$group))
+    return(seq_ranges)
+  }
+  
+  accession_range_list <- lapply(accession_gene_list, find_the_ranges)
+  accession_range_list <- do.call(rbind,accession_range_list)
+  
+  return(accession_range_list)
+}
+
+whole_CJIE_location <- lapply(range_CJIE_grouped,find_all_ranges)
+whole_CJIE_location <- do.call(rbind,whole_CJIE_location)
+rownames(whole_CJIE_location) <- NULL
+whole_CJIE_location <- whole_CJIE_location[c("accession","group","start","end","type")]
+```
+
+## output the potential CJIE3 ranges
+```{r}
+write.table(whole_CJIE_location, file = "../../Results/CJIE_determining/whole_range_of_CJIE.csv", sep = ",", row.names = F)
+
+```
+
+
+
+# use CJIE3 key genes' location to determine witch CJIE range to be chosen
+
+## load the CJIE3 key gene blast result data 
+```{r}
+rm(list = ls())
+
+locus_info <- read.csv("../../data/processed_data/CJ_RefSeq/all_locus_info.csv")
+CJIE_positive_list <- read.csv("../../Results/summary/complete_genomes_CJIE_positive_list.csv")
+CJIE_gene_blast_raw <- read.csv("../../Results/CJIE_determining/CJIE_key_genes_blast_result.csv", sep = " ")
+whole_CJIE_location <- read.csv("../../Results/CJIE_determining/whole_range_of_CJIE.csv")
+
+CJIE_gene_blast_raw$Subject_accession_version <- sub("\\..*", "", CJIE_gene_blast_raw$Subject_accession_version)
+CJIE_gene_blast_raw <- merge(CJIE_gene_blast_raw, locus_info, by.x = "Subject_accession_version", by.y = "locus_accession", all.x = T)
+CJIE_gene_blast_raw <- merge(CJIE_gene_blast_raw,CJIE_positive_list, by.x = "accession", by.y = "Assembly_Accession")
+
+```
+ 
+## analysis the blast data 
+```{r}
+# calculate the hits' coverage proportion in query protein 
+  CJIE_gene_blast_raw$hit_coverage <- CJIE_gene_blast_raw$Alignment_length / CJIE_gene_blast_raw$Query_sequence_length
+
+# select the qualified results from blast results
+  range_CJIE_gene <- subset(CJIE_gene_blast_raw,
+                                      subset = Percentage_of_identical_matches >=50 & hit_coverage >= 0.5) 
+  
+  range_CJIE_gene$start_in_genome <- range_CJIE_gene$Start_of_alignment_in_subject + range_CJIE_gene$start
+  range_CJIE_gene$end_in_genome <- range_CJIE_gene$End_of_alignment_in_subject + range_CJIE_gene$start
+  
+  range_CJIE_gene$orientation <- ifelse(range_CJIE_gene$end_in_genome < range_CJIE_gene$start_in_genome, "reverse", "forward")
+
+#build a function to make sure start point < end point
+swap_start_end <- function(data) {
+  # get the rows that need to be swiped 
+  rows_to_swap <- data$orientation == "reverse"
+  
+  # swap the start and end value 
+  data[rows_to_swap, c("start_in_genome", "end_in_genome")] <- data[rows_to_swap, c("end_in_genome", "start_in_genome")]
+  
+  # return the swiped data
+  return(data)
+}
+
+# apply the function
+  range_CJIE_gene <- swap_start_end(range_CJIE_gene)
+  
+  range_CJIE_gene <- subset(range_CJIE_gene, 
+                            select = c("accession","Query_accession_version","start_in_genome","end_in_genome"))
+
+  range_CJIE_gene$type <- "key_genes"
+  colnames(range_CJIE_gene) <- c("accession","group","start","end","type")
+  
+
+```
+
+##conbine the CJIE3 gene location data with potential CJIE region data and try to find the correct CJIE range
+```{r}
+# combine the two dataframe  
+  range_CJIE_all <- rbind(whole_CJIE_location,range_CJIE_gene)
+  range_CJIE_all_list <- split(range_CJIE_all,range_CJIE_all$accession)
+
+  find_the_covers <- function(df) {
+    accession <- unique(df$accession)
+    
+    CJIE <- subset(df, type == "CJIE")
+    genes <- subset(df, type == "key_genes")
+    
+    CJIE_range <- IRanges(start = CJIE$start, end = CJIE$end)
+    gene_range <- IRanges(start = genes$start, end = genes$end)
+    
+    cover_status <- CJIE_range %over% gene_range
+    
+      if (all(cover_status == F)) {
+        return(NULL)
+      } else {
+        ture_CJIE <- CJIE_range[cover_status, ]
+        ture_CJIE <- data.frame(ture_CJIE)
+        ture_CJIE$accession <- accession 
+        ture_CJIE$group <- 1:nrow(ture_CJIE)
+        ture_CJIE$type <- "CJIE"
+        
+        return(ture_CJIE)
+      }
+    
+  }
+  
+  ture_CJIE_ranges <- lapply(range_CJIE_all_list, find_the_covers)
+  ture_CJIE_ranges <- ture_CJIE_ranges[!sapply(ture_CJIE_ranges, is.null)]
+  
+  CJIE_ranges <- do.call(rbind,ture_CJIE_ranges)
+  CJIE_ranges <- CJIE_ranges[c("accession","start","end","width","group","type")]
+  row.names(CJIE_ranges) <- NULL
+```
+
+##output the confirmed CJIE range information
+```{r}
+write.csv(CJIE_ranges, file = "../../Results/CJIE_determining/confirmed_CJIE_ranges.csv",row.names = F)
+```
+
+
