@@ -6,11 +6,11 @@ Currently it's only used for storing the codes used in the project. A upgraded p
 file path: coding/T6SS_determining/T6SS_post_analysis_Rmd.Rmd 
 
 This file will output:
-  1.the hit table for each identified T6SS positive genome.
-  2.metadata for T6SS positive genomes
-  3.accession list of T6SS positive genomes
-  4.plots of T6SS' architecture with no more than 3 loci
-  5.T6SS cluster position in genome
+  1. the hit table for each identified T6SS positive genome.
+  2. metadata for T6SS positive genomes
+  3. accession list of T6SS positive genomes
+  4. plots of T6SS' architecture with no more than 3 loci
+  5. T6SS cluster position in genome
   
 # Appendix script 2: R markdown (.Rmd) for CJIE-3 identification with the 3 key genes
 file path: coding/CJIE_determining/CJIE_genes_post_analysis.Rmd
