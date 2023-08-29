@@ -19,6 +19,7 @@ This file will output:
   1. Hit table for the 3 key genes in all machted genomes
   2. CJIE-3 positive genome with metadata
   3. simpler version of the hit table
+
 note: this script analysed not only CJIE-3 but also potential plasmids. For better interpretation in report, the plasmid+ was classified into CJIE-3 negative.
 
 # Appendix script 3: R markdown (.Rmd) for locating potenital CJIE-3 regions and identify the regions with any 3 key genes 
