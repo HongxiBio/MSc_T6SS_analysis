@@ -36,9 +36,15 @@ This file will output:
   1. identified CJIE-3 regions with position in genome, size, acctual sequence and GC-content
   2. CJIE-3 sequences in .fna file
 
-## Appendix script 4: R markdown (.Rmd) for generating plots for CJIE-3 
+## Appendix script 5: R markdown (.Rmd) for generating plots for CJIE-3 
 file path: coding/graph_generation/generate_the_graph.Rmd
 
 This file will outut:
   1. CJIE-3 plots with respective accession number 
 
+## Appendix script 6: R markdown (.Rmd) for summarize the proportion of T6SS and CJIE-3 
+File path: coding/summary_analysis/merged_analysis_for_CJIE_and_T6SS.Rmd
+
+This file will output:
+  1. frequency table for T6SS and CJIE-3 in whole gnoemes (n=725)
+  2. frequency table for T6SS and CJIE-3 in complete genome datasets (n=286) 
