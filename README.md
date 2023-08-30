@@ -29,10 +29,16 @@ This file will output:
   1. potential CJIE-3 regions for each matches genomes
   2. identified CJIE-3 regions with accession number, location and size
 
-# Appendix script 4: R markdown (.Rmd) for analysing CJIE-3 regions generating plots for every identified CJIE-3 regions 
+# Appendix script 4: R markdown (.Rmd) for analysing CJIE-3 regions and output them as .fna file for annotation 
 file path: coding/CJIE_determining/select_CJIE_covered_locus.Rmd
 
 This file will output:
   1. identified CJIE-3 regions with position in genome, size, acctual sequence and GC-content
-  2. annotated by extenral application (prokka)
-  3. plots for every identified CJIE-3 regions
+  2. CJIE-3 sequences in .fna file
+
+# Appendix script 4: R markdown (.Rmd) for generating plots for CJIE-3 
+file path: coding/graph_generation/generate_the_graph.Rmd
+
+This file will outut:
+  1. CJIE-3 plots with respective accession number 
+
