@@ -1,4 +1,4 @@
-# MSc_T6SS_analysis
+# Scripts for MSc T6SS bioinformatic analysis
 This is the repository for automatically analysis T6SS and CJIE-3 region in Campylobacter jejuni
 Currently it's only used for storing the codes used in the project. A upgraded pipeline will be updated shortly.
 
