@@ -53,3 +53,10 @@ This file will output:
 File path: coding/linux_shell_script
 
 This folder includes every linux scirpts I used in this porject, including genome downloading, metadata collection, BLASTn, tBLASTp, prokka analysis
+
+## Appendix 15: Rmd for selecting locus information
+File path: coding/CJIE_determining/locus_information_selection.R
+
+This file will output:
+  1. every loci information with accession, length, position and names.
+  
