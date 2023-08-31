@@ -47,4 +47,9 @@ File path: coding/summary_analysis/merged_analysis_for_CJIE_and_T6SS.Rmd
 
 This file will output:
   1. frequency table for T6SS and CJIE-3 in whole gnoemes (n=725)
-  2. frequency table for T6SS and CJIE-3 in complete genome datasets (n=286) 
+  2. frequency table for T6SS and CJIE-3 in complete genome datasets (n=286)
+
+## Appendix script 7: Linux shell scripts used in this analysis
+File path: coding/linux_shell_script
+
+This folder includes every linux scirpts I used in this porject, including genome downloading, metadata collection, BLASTn, tBLASTp, prokka analysis
